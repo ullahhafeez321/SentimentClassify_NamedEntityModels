@@ -24,6 +24,7 @@ Task: Named Entity Recognition.
 - Independent sentiment classification.
 - Named entity extraction.
 - Combined analysis dashboard.
+- Run both models together or select a single model at a time.
 - Confidence scores.
 - Entity types and structured output.
 - Hugging Face integration.

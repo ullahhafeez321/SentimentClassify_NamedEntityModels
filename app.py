@@ -499,7 +499,18 @@ with model_col2:
 
 st.divider()
 st.markdown("### Try the analyzer")
-st.caption("Enter an English sentence or a short paragraph. Both models receive the same original input.")
+st.caption("Enter an English sentence or a short paragraph. Selected models receive the same original input.")
+
+analysis_mode = st.radio(
+    "Choose analysis mode",
+    options=["Both Models", "Sentiment Only", "NER Only"],
+    index=0,
+    horizontal=True,
+    help="Run both models together, or select a single model to run on its own.",
+)
+
+run_sentiment = analysis_mode in ("Both Models", "Sentiment Only")
+run_ner = analysis_mode in ("Both Models", "NER Only")
 
 text = st.text_area(
     "Your text",
@@ -509,8 +520,14 @@ text = st.text_area(
     key="analysis_input",
 )
 
+button_labels = {
+    "Both Models": "✨ Analyze With Both Models",
+    "Sentiment Only": "✨ Analyze Sentiment",
+    "NER Only": "✨ Extract Named Entities",
+}
+
 analyze = st.button(
-    "✨ Analyze With Both Models",
+    button_labels[analysis_mode],
     use_container_width=True,
 )
 
@@ -530,112 +547,131 @@ if analyze:
         sentiment_error = None
         ner_error = None
 
-        col1, col2 = st.columns(2)
+        spinner_labels = {
+            "Both Models": "Running BERT sentiment classification and Qwen NER...",
+            "Sentiment Only": "Running BERT sentiment classification...",
+            "NER Only": "Running Qwen NER...",
+        }
 
-        with st.spinner("Running BERT sentiment classification and Qwen NER..."):
-            # Each model receives the original user text independently.
-            try:
-                sentiment = predict_sentiment(clean_text)
-            except Exception as exc:
-                sentiment_error = str(exc)
+        with st.spinner(spinner_labels[analysis_mode]):
+            # Each selected model receives the original user text independently.
+            if run_sentiment:
+                try:
+                    sentiment = predict_sentiment(clean_text)
+                except Exception as exc:
+                    sentiment_error = str(exc)
 
-            try:
-                ner = extract_entities(clean_text)
-            except Exception as exc:
-                ner_error = str(exc)
+            if run_ner:
+                try:
+                    ner = extract_entities(clean_text)
+                except Exception as exc:
+                    ner_error = str(exc)
+
+        if analysis_mode == "Both Models":
+            col1, col2 = st.columns(2)
+            sentiment_container = col1
+            ner_container = col2
+        elif analysis_mode == "Sentiment Only":
+            sentiment_container = st.container()
+            ner_container = None
+        else:
+            sentiment_container = None
+            ner_container = st.container()
 
         # ----------------------------------------------------
         # SENTIMENT RESULTS
         # ----------------------------------------------------
 
-        with col1:
-            st.subheader("💬 Sentiment Analysis")
-            st.caption("BERT · Encoder-only")
+        if run_sentiment and sentiment_container is not None:
+            with sentiment_container:
+                st.subheader("💬 Sentiment Analysis")
+                st.caption("BERT · Encoder-only")
 
-            if sentiment_error:
-                st.error("Sentiment model failed to run.")
-                st.code(sentiment_error)
-            else:
-                st.markdown(
-                    f"""
-                    <div class="panel">
-                        <div style="color:#94a3b8;">
-                            PREDICTED SENTIMENT
+                if sentiment_error:
+                    st.error("Sentiment model failed to run.")
+                    st.code(sentiment_error)
+                else:
+                    st.markdown(
+                        f"""
+                        <div class="panel">
+                            <div style="color:#94a3b8;">
+                                PREDICTED SENTIMENT
+                            </div>
+                            <div class="metric">
+                                {html.escape(sentiment["sentiment"])}
+                            </div>
+                            <p>Confidence: {sentiment["confidence"]:.2%}</p>
                         </div>
-                        <div class="metric">
-                            {html.escape(sentiment["sentiment"])}
-                        </div>
-                        <p>Confidence: {sentiment["confidence"]:.2%}</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
-                st.markdown("#### Class Probabilities")
+                    st.markdown("#### Class Probabilities")
 
-                for item in sorted(
-                    sentiment["scores"],
-                    key=lambda item: item["score"],
-                    reverse=True,
-                ):
-                    st.write(f'{item["label"]}: {item["score"]:.2%}')
-                    st.progress(item["score"])
+                    for item in sorted(
+                        sentiment["scores"],
+                        key=lambda item: item["score"],
+                        reverse=True,
+                    ):
+                        st.write(f'{item["label"]}: {item["score"]:.2%}')
+                        st.progress(item["score"])
 
         # ----------------------------------------------------
         # NAMED ENTITY RESULTS
         # ----------------------------------------------------
 
-        with col2:
-            st.subheader("🏷️ Named Entity Recognition")
-            st.caption("Qwen · Decoder-only · LoRA adapter")
+        if run_ner and ner_container is not None:
+            with ner_container:
+                st.subheader("🏷️ Named Entity Recognition")
+                st.caption("Qwen · Decoder-only · LoRA adapter")
 
-            if ner_error:
-                st.error("Qwen NER model failed to run.")
-                st.code(ner_error)
-            else:
-                entities = ner["entities"]
+                if ner_error:
+                    st.error("Qwen NER model failed to run.")
+                    st.code(ner_error)
+                else:
+                    entities = ner["entities"]
 
-                st.markdown(
-                    f"""
-                    <div class="panel">
-                        <div style="color:#94a3b8;">
-                            ENTITIES EXTRACTED
+                    st.markdown(
+                        f"""
+                        <div class="panel">
+                            <div style="color:#94a3b8;">
+                                ENTITIES EXTRACTED
+                            </div>
+                            <div class="metric">{len(entities)}</div>
                         </div>
-                        <div class="metric">{len(entities)}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
-                if entities:
-                    for entity in entities:
-                        st.markdown(
-                            f"""
-                            <span class="entity">
-                                <span class="entity-type">
-                                    {html.escape(entity["type"])}
+                    if entities:
+                        for entity in entities:
+                            st.markdown(
+                                f"""
+                                <span class="entity">
+                                    <span class="entity-type">
+                                        {html.escape(entity["type"])}
+                                    </span>
+                                    {html.escape(entity["text"])}
                                 </span>
-                                {html.escape(entity["text"])}
-                            </span>
-                            """,
-                            unsafe_allow_html=True,
+                                """,
+                                unsafe_allow_html=True,
+                            )
+
+                        st.markdown("#### Structured Results")
+                        st.dataframe(
+                            entities,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                    else:
+                        st.info(
+                            "No entities were returned. Check the raw output "
+                            "below to see the model's response."
                         )
 
-                    st.markdown("#### Structured Results")
-                    st.dataframe(
-                        entities,
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-                else:
-                    st.info(
-                        "No entities were returned. Check the raw output "
-                        "below to see the model's response."
-                    )
-
-                with st.expander("View Qwen raw output"):
-                    st.code(ner["raw_output"] or "(empty output)")
-                    st.caption(f'Base model: {ner["base_model"]}')
+                    with st.expander("View Qwen raw output"):
+                        st.code(ner["raw_output"] or "(empty output)")
+                        st.caption(f'Base model: {ner["base_model"]}')
 
         # ----------------------------------------------------
         # ORIGINAL TEXT
@@ -645,7 +681,7 @@ if analyze:
         st.subheader("Original Input")
         st.info(clean_text)
         st.caption(
-            "Both models process the original input independently. "
+            "Each selected model processes the original input independently. "
             "Predictions depend on model training and may not always be correct."
         )
 
